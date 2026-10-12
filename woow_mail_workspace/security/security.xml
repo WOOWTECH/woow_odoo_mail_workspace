@@ -1,0 +1,17 @@
+<odoo>
+    <record id="folder_owner_rule" model="ir.rule">
+        <field name="name">Workspace folders are personal</field>
+        <field name="model_id" ref="model_woow_mail_folder"/>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+    </record>
+    <record id="draft_owner_rule" model="ir.rule">
+        <field name="name">Workspace drafts are personal</field>
+        <field name="model_id" ref="model_woow_mail_draft"/>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+    </record>
+    <record id="conversation_owner_rule" model="ir.rule">
+        <field name="name">Workspace conversations are limited to sender and initial recipients</field>
+        <field name="model_id" ref="model_woow_mail_conversation"/>
+        <field name="domain_force">[('company_id', 'in', company_ids), '|', ('user_id', '=', user.id), ('participant_ids', 'in', [user.partner_id.id])]</field>
+    </record>
+</odoo>

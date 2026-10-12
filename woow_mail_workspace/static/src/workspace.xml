@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="woow_mail_workspace.Workspace">
+        <div class="o_woow_mail" t-att-class="{ 'has-detail': state.detail || state.opening, 'sidebar-open': state.sidebar }">
+            <aside class="wm-sidebar" aria-label="信箱導覽">
+                <div class="wm-brand"><span class="wm-brand-icon"><i class="fa fa-envelope-o"/></span><strong>郵件</strong></div>
+                <button class="wm-compose btn btn-primary" t-on-click="() => this.compose()" t-att-disabled="state.busy"><i class="fa fa-pencil"/> 撰寫郵件</button>
+                <label class="wm-scope-label form-label" for="wm-scope">查看範圍</label>
+                <select id="wm-scope" class="form-select wm-scope" t-att-value="state.scope" t-on-change="changeScope">
+                    <option value="personal">我的郵件</option>
+                    <option value="accessible">可存取的郵件</option>
+                    <option t-if="state.admin" value="database">資料庫郵件 · 管理員</option>
+                </select>
+                <nav class="wm-nav nav flex-column" aria-label="郵件分類">
+                    <t t-foreach="boxes" t-as="box" t-key="box.id">
+                        <button class="wm-nav-item nav-link" t-att-aria-label="box.label" t-att-class="{active: state.box === box.id}" t-att-aria-current="state.box === box.id ? 'page' : undefined" t-on-click="() => this.navigate(box.id)">
+                            <i t-att-class="'fa fa-' + box.icon"/><span t-esc="box.label"/>
+                            <span class="wm-count" t-if="box.id === 'drafts' and state.draftCount" t-esc="state.draftCount"/>
+                        </button>
+                    </t>
+                </nav>
+                <div class="wm-folder-heading"><span>我的資料夾</span><div><button class="btn btn-light wm-icon" title="管理資料夾" aria-label="管理資料夾" t-on-click="manageFolders"><i class="fa fa-sliders"/></button><button class="btn btn-light wm-icon" title="新增資料夾" aria-label="新增資料夾" t-on-click="newFolder"><i class="fa fa-plus"/></button></div></div>
+                <nav class="wm-folders nav flex-column" aria-label="個人資料夾">
+                    <button t-foreach="state.folders" t-as="folder" t-key="folder.id" class="wm-nav-item nav-link" t-att-aria-label="folder.name" t-att-class="{active: state.box === 'folder' and state.folderId === folder.id}" t-on-click="() => this.navigate('folder', folder.id)"><i class="fa fa-folder-o"/><span t-esc="folder.name"/></button>
+                    <p t-if="!state.folders.length" class="wm-folder-hint">依你的工作方式整理信件</p>
+                </nav>
+                <div class="wm-sidebar-footer"><span class="wm-avatar" t-esc="initials(state.name)"/><div><strong t-esc="state.name"/><small>Odoo 郵件工作區</small></div></div>
+            </aside>
+            <main class="wm-main">
+                <header class="wm-topbar o_control_panel">
+                    <button class="btn btn-light wm-icon wm-menu-toggle" aria-label="開啟信箱導覽" t-on-click="() => state.sidebar = !state.sidebar"><i class="fa fa-bars"/></button>
+                    <form class="wm-search input-group" t-on-submit="search" role="search"><span class="input-group-text"><i class="fa fa-search"/></span><input class="form-control" t-model="state.search" aria-label="搜尋郵件" placeholder="搜尋主旨、寄件者、收件者或內文"/><button type="submit" class="wm-search-go btn btn-secondary" title="搜尋" aria-label="搜尋"><i class="fa fa-arrow-right"/></button></form>
+                    <button class="btn btn-light wm-icon" title="重新整理" aria-label="重新整理" t-on-click="refresh" t-att-disabled="state.loading"><i class="fa fa-refresh" t-att-class="{'fa-spin': state.loading}"/></button>
+                    <span class="wm-scope-badge" t-esc="scopeLabel"/>
+                </header>
+                <div class="wm-context alert alert-secondary" t-if="state.scope !== 'personal'"><i class="fa fa-info-circle"/><span t-if="state.scope === 'database'">此資料庫的業務郵件；不含內部聊天。整理狀態只影響你自己的檢視。</span><span t-else="">依原業務紀錄權限顯示；不會擴大你的資料存取範圍。</span></div>
+                <section class="wm-surface card">
+                    <div class="wm-toolbar card-header">
+                        <div class="wm-toolbar-start">
+                            <input t-if="state.box !== 'drafts'" type="checkbox" class="form-check-input wm-checkbox" aria-label="選取此頁全部信件" t-att-checked="selectedAll" t-on-change="selectAll"/>
+                            <t t-if="state.selected.length">
+                                <span class="wm-selection-count"><t t-esc="state.selected.length"/> 封</span>
+                                <button class="btn btn-light wm-icon" aria-label="封存選取信件" title="封存" t-on-click="() => this.update({archived: true})" t-att-disabled="state.busy"><i class="fa fa-archive"/></button>
+                                <button class="btn btn-light wm-icon" aria-label="標為已讀" title="標為已讀" t-on-click="() => this.update({is_read: true})" t-att-disabled="state.busy"><i class="fa fa-envelope-open-o"/></button>
+                                <button class="btn btn-light wm-icon" aria-label="標為未讀" title="標為未讀" t-on-click="() => this.update({is_read: false})" t-att-disabled="state.busy"><i class="fa fa-envelope-o"/></button>
+                                <button class="btn btn-light wm-icon" t-if="state.box !== 'trash'" aria-label="移至垃圾桶" title="移至垃圾桶，只影響你的檢視" t-on-click="() => this.update({trashed: true})" t-att-disabled="state.busy"><i class="fa fa-trash-o"/></button>
+                                <button class="btn btn-light wm-icon" t-else="" aria-label="還原信件" title="還原" t-on-click="() => this.update({trashed: false})" t-att-disabled="state.busy"><i class="fa fa-undo"/></button>
+                                <select class="form-select wm-move" aria-label="移動選取信件" t-on-change="move" t-att-disabled="state.busy"><option value="">移至…</option><option value="0">收件匣</option><option t-foreach="state.folders" t-as="f" t-key="f.id" t-att-value="f.id" t-esc="f.name"/></select>
+                            </t>
+                            <t t-else=""><h1 t-esc="title"/><button t-if="state.box !== 'drafts'" class="wm-chip btn btn-outline-secondary btn-sm" t-att-class="{active: state.unread}" t-att-aria-pressed="state.unread ? 'true' : 'false'" t-on-click="toggleUnread">未讀</button></t>
+                        </div>
+                        <div class="wm-pagination"><span t-if="state.messages.length"><t t-esc="state.offset + 1"/>–<t t-esc="state.offset + state.messages.length"/></span><button class="btn btn-light wm-icon" title="上一頁" aria-label="上一頁" t-att-disabled="!state.offset || state.loading" t-on-click="() => this.page(-1)"><i class="fa fa-angle-left"/></button><button class="btn btn-light wm-icon" title="下一頁" aria-label="下一頁" t-att-disabled="!state.more || state.loading" t-on-click="() => this.page(1)"><i class="fa fa-angle-right"/></button></div>
+                    </div>
+                    <div class="wm-panes">
+                        <section class="wm-message-list" aria-label="郵件列表" t-att-aria-busy="state.loading ? 'true' : 'false'">
+                            <div t-if="state.loading" class="wm-loading"><i class="fa fa-spinner fa-spin"/> 正在載入郵件…</div>
+                            <t t-else="">
+                                <table t-if="state.messages.length" class="wm-table table table-hover mb-0" aria-label="郵件清單">
+                                    <thead><tr><th class="wm-control-column" scope="col"><span class="visually-hidden">選取與星號</span></th><th class="wm-sender-column" scope="col">寄件者</th><th scope="col">主旨</th><th class="wm-date-column" scope="col">日期</th></tr></thead>
+                                    <tbody>
+                                        <tr t-foreach="state.messages" t-as="message" t-key="message.id" class="wm-message" t-att-class="{unread: !message.is_read, current: state.detail?.id === message.id, selected: state.selected.includes(message.id)}" t-att-data-message-id="message.id">
+                                            <td class="wm-control-column"><div class="wm-message-controls" t-if="state.box !== 'drafts'"><input type="checkbox" class="form-check-input wm-checkbox" t-att-aria-label="'選取 ' + message.subject" t-att-checked="state.selected.includes(message.id)" t-on-change="() => this.select(message.id)"/><button class="wm-star" t-att-class="{active: message.starred}" t-att-aria-label="message.starred ? '取消星號' : '加上星號'" t-on-click="() => this.star(message)"><i t-att-class="message.starred ? 'fa fa-star' : 'fa fa-star-o'"/></button></div></td>
+                                            <td class="wm-sender-column"><span class="wm-sender" t-esc="message.sender"/></td>
+                                            <td class="wm-subject-column">
+                                                <button class="wm-message-open" t-on-click="() => this.open(message)">
+                                                    <div class="wm-message-meta"><span class="wm-sender" t-esc="message.sender"/><time t-esc="date(message.date)"/></div>
+                                                    <div class="wm-message-subject"><span t-esc="message.subject || '未命名草稿'"/><i t-if="message.has_attachments" class="fa fa-paperclip" title="包含附件"/><i t-if="message.has_error" class="fa fa-exclamation-circle text-danger" title="寄送異常"/></div>
+                                                    <p class="wm-preview" t-esc="message.preview"/>
+                                                    <span t-if="message.record" class="wm-record-label badge text-bg-light" t-esc="message.record"/>
+                                                </button>
+                                            </td>
+                                            <td class="wm-date-column"><time t-esc="date(message.date)"/></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <div t-if="!state.messages.length" class="wm-list-empty"><i t-att-class="state.failed ? 'fa fa-exclamation-circle' : 'fa fa-inbox'"/><strong t-esc="state.failed ? '暫時無法載入' : state.search ? '找不到符合的郵件' : '這裡目前沒有郵件'"/><p t-esc="state.failed ? '請按重新整理再試一次。' : state.search ? '試試其他關鍵字或查看範圍。' : '新的相關信件會出現在這裡。'"/></div>
+                            </t>
+                        </section>
+                        <section class="wm-reader card" aria-label="郵件內容">
+                            <div t-if="state.opening" class="wm-reader-empty"><i class="fa fa-spinner fa-spin"/><p>正在開啟郵件…</p></div>
+                            <t t-elif="state.detail">
+                                <div class="wm-reader-toolbar card-header"><button class="btn btn-light wm-icon" title="關閉閱讀區" aria-label="關閉閱讀區" t-on-click="clearDetail"><i class="fa fa-arrow-left"/></button><div class="wm-reader-actions"><button class="btn btn-light wm-icon" title="標為未讀" aria-label="將這封信標為未讀" t-on-click="() => this.update({is_read: false}, [state.detail.id])"><i class="fa fa-envelope-o"/></button><button class="btn btn-light wm-icon" t-att-title="state.detail.archived ? '取消封存' : '封存'" aria-label="切換封存" t-on-click="() => this.update({archived: !state.detail.archived}, [state.detail.id])"><i class="fa fa-archive"/></button><button class="btn btn-light wm-icon" t-att-title="state.detail.trashed ? '還原' : '移至垃圾桶'" aria-label="切換垃圾桶" t-on-click="() => this.update({trashed: !state.detail.trashed}, [state.detail.id])"><i t-att-class="state.detail.trashed ? 'fa fa-undo' : 'fa fa-trash-o'"/></button></div></div>
+                                <div class="wm-reader-scroll card-body">
+                                    <h2 t-esc="state.detail.subject"/>
+                                    <button t-if="state.detail.can_open_record" class="wm-record-link btn btn-link" t-on-click="openRecord"><i class="fa fa-link"/><t t-esc="state.detail.record || '開啟業務紀錄'"/><i class="fa fa-angle-right"/></button>
+                                    <div class="wm-envelope"><span class="wm-avatar" t-esc="initials(state.detail.sender)"/><div class="wm-envelope-person"><strong t-esc="state.detail.sender"/><small>收件者：<t t-esc="state.detail.recipients.join('、') || '依原郵件路由'"/></small></div><time t-esc="date(state.detail.date)"/><button class="wm-star" t-att-class="{active: state.detail.starred}" aria-label="切換這封信的星號" t-on-click="() => this.star(state.detail)"><i t-att-class="state.detail.starred ? 'fa fa-star' : 'fa fa-star-o'"/></button></div>
+                                    <div class="alert alert-warning" t-if="state.detail.has_error">這封信有寄送異常，請查看原業務紀錄的寄件狀態。</div>
+                                    <iframe class="wm-body" title="郵件本文（外部圖片已封鎖）" sandbox="" referrerpolicy="no-referrer" t-att-srcdoc="emailDocument"/>
+                                    <div class="wm-attachments" t-if="state.detail.attachments.length"><h3><i class="fa fa-paperclip"/> <t t-esc="state.detail.attachments.length"/> 個附件</h3><a t-foreach="state.detail.attachments" t-as="file" t-key="file.id" t-att-href="file.url" class="wm-attachment card"><i class="fa fa-file-o"/><span><strong t-esc="file.name"/><small><t t-esc="Math.max(1, Math.round(file.size / 1024))"/> KB</small></span><i class="fa fa-download"/></a></div>
+                                    <div class="wm-reply-actions"><button t-if="state.detail.can_reply" class="btn btn-secondary" t-on-click="() => this.compose('reply')"><i class="fa fa-reply"/> 回覆</button><button class="btn btn-secondary" t-on-click="() => this.compose('forward')"><i class="fa fa-share"/> 轉寄</button></div>
+                                </div>
+                            </t>
+                            <div t-else="" class="wm-reader-empty"><div class="wm-empty-art"><i class="fa fa-envelope-o"/><span class="wm-empty-dot"/></div><h2>選擇郵件</h2><p>選擇一封郵件，閱讀內容與附件<br/>也能直接回到相關的業務紀錄。</p><span class="wm-empty-note"><i class="fa fa-shield"/> 個人整理狀態，不影響原始郵件</span></div>
+                        </section>
+                    </div>
+                    <footer class="wm-footnote" t-if="state.box === 'trash'">垃圾桶只隱藏你自己的檢視；原信與業務紀錄仍完整保留。</footer>
+                </section>
+            </main>
+        </div>
+    </t>
+</templates>

@@ -1,0 +1,46 @@
+<odoo>
+    <record id="workspace_action" model="ir.actions.client">
+        <field name="name">郵件</field>
+        <field name="tag">woow_mail_workspace.Workspace</field>
+    </record>
+    <menuitem id="workspace_menu" name="郵件" action="workspace_action" sequence="15" groups="base.group_user"/>
+    <record id="draft_form" model="ir.ui.view">
+        <field name="name">woow.mail.draft.form</field>
+        <field name="model">woow.mail.draft</field>
+        <field name="arch" type="xml">
+            <form string="撰寫郵件" create="false">
+                <sheet>
+                    <field name="state" invisible="1"/>
+                    <field name="mode" invisible="1"/>
+                    <div class="alert alert-info" invisible="mode != 'reply'">回覆會留在原業務紀錄，也可能通知該紀錄的追蹤者。要另寄給指定收件者，請使用轉寄。</div>
+                    <group>
+                        <field name="partner_ids" widget="many2many_tags_email" string="收件者" options="{'no_quick_create': True}" context="{'show_email': True, 'form_view_ref': 'base.view_partner_simple_form'}" readonly="state != 'draft'"/>
+                        <field name="subject" string="主旨" placeholder="輸入主旨" readonly="state != 'draft'"/>
+                    </group>
+                    <field name="body" widget="html" placeholder="寫下你的訊息…" readonly="state != 'draft'"/>
+                    <field name="attachment_ids" widget="many2many_binary" string="附件" readonly="state != 'draft'"/>
+                </sheet>
+                <footer>
+                    <button name="action_queue" string="送出" type="object" close="1" class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_save" string="儲存草稿" type="object" close="1" class="btn-secondary" invisible="state != 'draft'"/>
+                    <button name="action_discard" string="捨棄草稿" type="object" close="1" class="btn-link" invisible="state != 'draft'" confirm="捨棄這份尚未寄出的草稿？"/>
+                    <button string="關閉" special="cancel" class="btn-link"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+    <record id="draft_list" model="ir.ui.view">
+        <field name="name">woow.mail.draft.list</field>
+        <field name="model">woow.mail.draft</field>
+        <field name="arch" type="xml">
+            <list create="false"><field name="subject" string="主旨"/><field name="partner_ids" widget="many2many_tags" string="收件者"/><field name="write_date" string="更新時間"/></list>
+        </field>
+    </record>
+    <record id="conversation_form" model="ir.ui.view">
+        <field name="name">woow.mail.conversation.form</field>
+        <field name="model">woow.mail.conversation</field>
+        <field name="arch" type="xml">
+            <form><sheet><h1><field name="name"/></h1><field name="user_id"/></sheet><chatter/></form>
+        </field>
+    </record>
+</odoo>

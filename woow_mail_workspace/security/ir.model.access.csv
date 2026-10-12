@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+folder_user,Workspace folders,model_woow_mail_folder,base.group_user,1,1,1,1
+draft_user,Workspace drafts,model_woow_mail_draft,base.group_user,1,1,1,1
+conversation_user,Workspace conversations,model_woow_mail_conversation,base.group_user,1,1,1,0
