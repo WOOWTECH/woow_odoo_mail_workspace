@@ -131,7 +131,13 @@ class MailDraft(models.Model):
             })
             model, res_id = conversation._name, conversation.id
             super(MailDraft, self).write({"conversation_id": conversation.id})
-        composer = self.env["mail.compose.message"].with_context(mail_notify_force_send=False).create({
+        # force_email: a recipient whose res.users.notification_type is "inbox"
+        # would otherwise be notified in-app and NO email would be created at all
+        # (see models/force_email.py). The Send button must always send mail.
+        composer = self.env["mail.compose.message"].with_context(
+            mail_notify_force_send=False,
+            woow_mail_workspace_force_email=True,
+        ).create({
             "composition_mode": "comment", "model": model, "res_ids": repr([res_id]),
             "subject": self.subject, "body": self.body,
             "partner_ids": [(6, 0, self.partner_ids.ids)],
@@ -140,6 +146,36 @@ class MailDraft(models.Model):
             "subtype_id": self.env.ref("mail.mt_comment").id,
             "force_send": False,
         })
-        composer.action_send_mail()
+        composer.with_context(woow_mail_workspace_force_email=True).action_send_mail()
+        self._assert_every_recipient_got_an_email(model, res_id)
         super(MailDraft, self).write({"state": "queued"})
         return {"type": "ir.actions.act_window_close"}
+
+    def _assert_every_recipient_got_an_email(self, model, res_id):
+        """Refuse to report success unless every recipient actually has mail queued.
+
+        The defect this guards against was silent, which is what made it
+        expensive: on 2026-10-15 a production send produced an in-app
+        notification and zero mail.mail rows, the UI said "sent", and nothing
+        recorded a failure. The recipient found out by not receiving anything.
+
+        Odoo's notification layer legitimately routes a recipient away from
+        email for several reasons (preference, mail.thread overrides, another
+        module adding a channel). Any of those is fine as a product decision but
+        NOT fine silently from a mail client: raising here rolls the whole send
+        back, leaves the draft editable, and tells the sender which address did
+        not get queued -- a visible failure instead of a lost message.
+        """
+        self.ensure_one()
+        message = self.env["mail.message"].sudo().search(
+            [("model", "=", model), ("res_id", "=", res_id)], order="id desc", limit=1)
+        emailed = self.env["mail.notification"].sudo().search(
+            [("mail_message_id", "=", message.id), ("notification_type", "=", "email")]
+        ).res_partner_id if message else self.env["res.partner"]
+        missing = self.partner_ids - emailed
+        if missing:
+            raise ValidationError(_(
+                "These recipients were not queued for email delivery, so the message "
+                "was not sent: %s. Nothing was sent to anyone; the draft is unchanged. "
+                "Report this rather than retrying -- retrying will fail the same way.",
+                ", ".join(missing.mapped("email") or missing.mapped("display_name"))))

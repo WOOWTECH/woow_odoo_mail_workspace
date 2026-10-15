@@ -183,6 +183,74 @@ class TestWorkspace(TransactionCase):
                 draft.action_queue()
             smtp.assert_not_called()
 
+    def test_send_to_inbox_preference_user_still_creates_email(self):
+        """A recipient who handles notifications in Odoo must still receive mail.
+
+        Regression for the production defect found on 2026-10-15: the recipient
+        owned an Odoo user whose notification_type was 'inbox', so
+        _notify_thread() classified them as an in-app recipient and created ZERO
+        mail.mail rows. The sender saw success and nothing recorded a failure.
+        """
+        self.bob.notification_type = "inbox"
+        draft = self._draft(partner_ids=[Command.set(self.bob.partner_id.ids)])
+        with patch.object(type(self.env["ir.mail_server"]), "send_email",
+                          side_effect=AssertionError("SMTP forbidden in isolated test")):
+            draft.action_queue()
+        message = self.env["mail.message"].search(
+            [("model", "=", "woow.mail.conversation"), ("res_id", "=", draft.conversation_id.id)])
+        self.assertEqual(len(message), 1)
+        outgoing = self.env["mail.mail"].search([("mail_message_id", "=", message.id)])
+        self.assertEqual(len(outgoing), 1, "an inbox-preference recipient must still get an email")
+        self.assertIn(self.bob.partner_id, outgoing.recipient_ids)
+        notifications = self.env["mail.notification"].search([("mail_message_id", "=", message.id)])
+        self.assertEqual(notifications.mapped("notification_type"), ["email"])
+
+    def test_send_refuses_silently_losing_a_recipient(self):
+        """If anything routes a recipient away from email, the send must fail loudly.
+
+        Simulates a future regression (any cause: a preference, another module's
+        channel, an override) by neutralising the force-email promotion. The
+        sender must get an error naming the address, and nothing may be marked
+        queued -- the 2026-10-15 defect was expensive precisely because it was
+        silent.
+        """
+        self.bob.notification_type = "inbox"
+        draft = self._draft(partner_ids=[Command.set(self.bob.partner_id.ids)])
+        thread = type(self.env["mail.thread"])
+        original = thread._notify_get_recipients
+
+        def no_promotion(self2, message, msg_vals, **kwargs):
+            recipients = original(self2, message, msg_vals, **kwargs)
+            for recipient in recipients:
+                recipient["notif"] = "inbox"
+            return recipients
+
+        with patch.object(thread, "_notify_get_recipients", no_promotion):
+            with self.assertRaises(ValidationError) as caught:
+                draft.action_queue()
+        self.assertIn("bob@example.invalid", str(caught.exception))
+        draft.invalidate_recordset(["state"])
+        self.assertEqual(draft.state, "draft", "a failed send must leave the draft editable")
+
+    def test_inbox_preference_untouched_outside_the_workspace(self):
+        """The override is scoped: ERP chatter keeps honouring the preference.
+
+        Without this, promoting 'inbox' to 'email' globally would start emailing
+        internal staff about every document they follow -- a different product
+        decision, and not this module's to make.
+        """
+        self.bob.notification_type = "inbox"
+        self.contact.message_subscribe(partner_ids=self.bob.partner_id.ids)
+        message = self.contact.with_user(self.alice).message_post(
+            body="<p>Business chatter, not a workspace send</p>",
+            partner_ids=self.bob.partner_id.ids,
+            subtype_xmlid="mail.mt_comment",
+            message_type="comment",
+        )
+        notifications = self.env["mail.notification"].search([("mail_message_id", "=", message.id)])
+        self.assertEqual(notifications.mapped("notification_type"), ["inbox"])
+        self.assertFalse(self.env["mail.mail"].search([("mail_message_id", "=", message.id)]))
+
     def test_reply_keeps_business_thread(self):
         action = self.service.compose(self.business.id, "reply", "accessible")
         draft = self.env["woow.mail.draft"].with_user(self.alice).browse(action["res_id"])
