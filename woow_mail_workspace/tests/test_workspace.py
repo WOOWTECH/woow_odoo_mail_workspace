@@ -1,8 +1,10 @@
+from contextlib import contextmanager
 from unittest.mock import patch
 
 from odoo import Command
 from odoo.exceptions import AccessError, ValidationError
 from odoo.tests import TransactionCase, tagged, new_test_user
+from odoo.tools import mute_logger
 
 
 @tagged("post_install", "-at_install")
@@ -35,6 +37,26 @@ class TestWorkspace(TransactionCase):
 
     def _ids(self, service=None, **kwargs):
         return {r["id"] for r in (self.service if service is None else service).list_messages(box="all", **kwargs)["messages"]}
+
+    @contextmanager
+    def _smtp(self, refuse=False):
+        """Fake ir.mail_server.send_email.
+
+        Delivery is synchronous since 2026-10-15, so a test that forbids SMTP
+        outright no longer describes the product -- it describes the queue-based
+        design that silently delayed mail for up to an hour. These tests now let
+        SMTP succeed and assert on what was handed to it.
+        """
+        sent = []
+
+        def fake(self2, message, *args, **kwargs):
+            if refuse:
+                raise AssertionError("mailbox unavailable (simulated)")
+            sent.append(message["To"])
+            return "<fake-%d@probe.invalid>" % len(sent)
+
+        with patch.object(type(self.env["ir.mail_server"]), "send_email", fake):
+            yield sent
 
     def _draft(self, **values):
         return self.env["woow.mail.draft"].with_user(self.alice).create({
@@ -168,20 +190,20 @@ class TestWorkspace(TransactionCase):
         with self.assertRaises(AccessError):
             self._draft(user_id=self.bob.id)
 
-    def test_send_queues_once_without_smtp(self):
+    def test_send_delivers_once_and_refuses_a_second_send(self):
         draft = self._draft()
-        with patch.object(type(self.env["ir.mail_server"]), "send_email", side_effect=AssertionError("SMTP forbidden in isolated test")) as smtp:
+        with self._smtp() as sent:
             draft.action_queue()
             self.assertEqual(draft.state, "queued")
             message = self.env["mail.message"].search([("model", "=", "woow.mail.conversation"), ("res_id", "=", draft.conversation_id.id)])
             self.assertEqual(len(message), 1)
             self.assertEqual(message.author_id, self.alice.partner_id)
-            outgoing = self.env["mail.mail"].search([("mail_message_id", "=", message.id)])
-            self.assertEqual(len(outgoing), 1)
-            self.assertEqual(outgoing.state, "outgoing")
+            notification = self.env["mail.notification"].search([("mail_message_id", "=", message.id)])
+            self.assertEqual(notification.mapped("notification_status"), ["sent"])
+            self.assertEqual(len(sent), 1, "exactly one message handed to SMTP")
             with self.assertRaises(ValidationError):
                 draft.action_queue()
-            smtp.assert_not_called()
+            self.assertEqual(len(sent), 1, "a refused second send must not reach SMTP again")
 
     def test_send_to_inbox_preference_user_still_creates_email(self):
         """A recipient who handles notifications in Odoo must still receive mail.
@@ -193,17 +215,50 @@ class TestWorkspace(TransactionCase):
         """
         self.bob.notification_type = "inbox"
         draft = self._draft(partner_ids=[Command.set(self.bob.partner_id.ids)])
-        with patch.object(type(self.env["ir.mail_server"]), "send_email",
-                          side_effect=AssertionError("SMTP forbidden in isolated test")):
+        with self._smtp() as sent:
             draft.action_queue()
         message = self.env["mail.message"].search(
             [("model", "=", "woow.mail.conversation"), ("res_id", "=", draft.conversation_id.id)])
         self.assertEqual(len(message), 1)
-        outgoing = self.env["mail.mail"].search([("mail_message_id", "=", message.id)])
-        self.assertEqual(len(outgoing), 1, "an inbox-preference recipient must still get an email")
-        self.assertIn(self.bob.partner_id, outgoing.recipient_ids)
         notifications = self.env["mail.notification"].search([("mail_message_id", "=", message.id)])
-        self.assertEqual(notifications.mapped("notification_type"), ["email"])
+        self.assertEqual(notifications.mapped("notification_type"), ["email"],
+                         "an inbox-preference recipient must still get an email")
+        self.assertEqual(notifications.mapped("notification_status"), ["sent"])
+        self.assertEqual(len(sent), 1)
+        self.assertIn("bob@example.invalid", sent[0])
+
+    def test_send_hands_the_message_to_smtp_immediately(self):
+        """Send must deliver now, not wait for the hourly queue cron.
+
+        Regression for the production defect of 2026-10-15: mail.mail 5064 was
+        created at 21:43 and the queue cron's nextcall was 22:24, so the message
+        sat 41 minutes while the UI already said sent. Nothing in this test runs
+        a cron -- if the send were still queued, state would be 'outgoing' and
+        send_email would never have been called.
+        """
+        with self._smtp() as sent:
+            draft = self._draft()
+            draft.action_queue()
+        self.assertEqual(len(sent), 1, "SMTP must be called during the request, not by a cron")
+        message = self.env["mail.message"].search(
+            [("model", "=", "woow.mail.conversation"), ("res_id", "=", draft.conversation_id.id)])
+        notification = self.env["mail.notification"].search([("mail_message_id", "=", message.id)])
+        self.assertEqual(notification.mapped("notification_status"), ["sent"])
+        self.assertFalse(
+            self.env["mail.mail"].search([("mail_message_id", "=", message.id),
+                                          ("state", "=", "outgoing")]),
+            "nothing may be left sitting in the outgoing queue")
+
+    def test_send_reports_a_total_smtp_refusal_instead_of_claiming_success(self):
+        """If the mail server refuses every recipient, say so and keep the draft."""
+        draft = self._draft()
+        with self._smtp(refuse=True):
+            with mute_logger("odoo.addons.mail.models.mail_mail"):
+                with self.assertRaises(ValidationError) as caught:
+                    draft.action_queue()
+        self.assertIn("sender@example.invalid", str(caught.exception))
+        draft.invalidate_recordset(["state"])
+        self.assertEqual(draft.state, "draft", "a refused send must leave the draft editable")
 
     def test_send_refuses_silently_losing_a_recipient(self):
         """If anything routes a recipient away from email, the send must fail loudly.
@@ -254,7 +309,7 @@ class TestWorkspace(TransactionCase):
     def test_reply_keeps_business_thread(self):
         action = self.service.compose(self.business.id, "reply", "accessible")
         draft = self.env["woow.mail.draft"].with_user(self.alice).browse(action["res_id"])
-        with patch.object(type(self.env["ir.mail_server"]), "send_email", side_effect=AssertionError("SMTP forbidden")):
+        with self._smtp():
             draft.action_queue()
         reply = self.env["mail.message"].search([("parent_id", "=", self.business.id)])
         self.assertEqual(len(reply), 1)
@@ -263,7 +318,7 @@ class TestWorkspace(TransactionCase):
 
     def test_new_conversation_recipient_can_reply_but_unrelated_admin_cannot(self):
         draft = self._draft(partner_ids=[Command.set(self.bob.partner_id.ids)])
-        with patch.object(type(self.env["ir.mail_server"]), "send_email", side_effect=AssertionError("SMTP forbidden")):
+        with self._smtp():
             draft.action_queue()
             original = self.env["mail.message"].search([("model", "=", "woow.mail.conversation"), ("res_id", "=", draft.conversation_id.id)])
             recipient = self.service.with_user(self.bob)
@@ -295,7 +350,7 @@ class TestWorkspace(TransactionCase):
         self.assertFalse(draft.attachment_ids.public)
         self.assertEqual(original.res_id, self.contact.id)
         draft.partner_ids = [Command.set(self.external.ids)]
-        with patch.object(type(self.env["ir.mail_server"]), "send_email", side_effect=AssertionError("SMTP forbidden")):
+        with self._smtp():
             draft.action_queue()
         self.assertTrue(draft.conversation_id)
         self.assertEqual(original.res_model, "res.partner")

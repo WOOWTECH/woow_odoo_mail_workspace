@@ -1,11 +1,19 @@
 """Persistent private drafts; delivery is delegated to Odoo's native composer.
 
-No SMTP credentials, no direct SMTP calls, no immediate delivery. The existing
-Odoo queue sends the message. Reply stays on the original business thread;
-forward/new uses a private conversation so it cannot notify original followers.
+No SMTP credentials and no direct SMTP calls: the native composer and
+ir.mail_server do the sending. Delivery is SYNCHRONOUS -- the Send button hands
+the message to SMTP inside the request. It used to be left to Odoo's queue, but
+mail.ir_cron_mail_scheduler_action is hourly by default, so "sent" in the UI
+meant "will leave within the hour" (see action_queue for the measurements).
+Reply stays on the original business thread; forward/new uses a private
+conversation so it cannot notify original followers.
 """
+import logging
+
 from odoo import api, fields, models, _
 from odoo.exceptions import AccessError, ValidationError
+
+_logger = logging.getLogger(__name__)
 
 
 class MailConversation(models.Model):
@@ -131,11 +139,26 @@ class MailDraft(models.Model):
             })
             model, res_id = conversation._name, conversation.id
             super(MailDraft, self).write({"conversation_id": conversation.id})
-        # force_email: a recipient whose res.users.notification_type is "inbox"
-        # would otherwise be notified in-app and NO email would be created at all
-        # (see models/force_email.py). The Send button must always send mail.
+        # Two context keys, two different defects they prevent:
+        #
+        # force_send=True -- hand the message to SMTP inside this request rather
+        #   than leaving it for mail.ir_cron_mail_scheduler_action. That cron is
+        #   HOURLY by default, so a queued send sat up to an hour before leaving
+        #   the building while the UI already said "sent". Measured on production
+        #   2026-10-15: mail.mail 5064 created 21:43, cron nextcall 22:24 -- a
+        #   41-minute wait on a mail client's Send button. The same defect hit the
+        #   inzense tenant on 2026-10-12 and was patched there by shortening that
+        #   tenant's cron; doing it per database leaves every other database
+        #   broken, so the fix belongs here. A queue is also the wrong shape for
+        #   this button for a second reason: process_email_queue() only ever
+        #   re-picks state='outgoing', so an SMTP failure discovered an hour later
+        #   lands in 'exception' and is never retried, with nobody watching.
+        #
+        # woow_mail_workspace_force_email -- a recipient whose
+        #   res.users.notification_type is "inbox" would otherwise be notified
+        #   in-app and NO email would be created at all (see models/force_email.py).
         composer = self.env["mail.compose.message"].with_context(
-            mail_notify_force_send=False,
+            mail_notify_force_send=True,
             woow_mail_workspace_force_email=True,
         ).create({
             "composition_mode": "comment", "model": model, "res_ids": repr([res_id]),
@@ -144,7 +167,7 @@ class MailDraft(models.Model):
             "attachment_ids": [(6, 0, self.attachment_ids.ids)],
             "parent_id": self.source_message_id.id if self.mode == "reply" else False,
             "subtype_id": self.env.ref("mail.mt_comment").id,
-            "force_send": False,
+            "force_send": True,
         })
         composer.with_context(woow_mail_workspace_force_email=True).action_send_mail()
         self._assert_every_recipient_got_an_email(model, res_id)
@@ -179,3 +202,29 @@ class MailDraft(models.Model):
                 "was not sent: %s. Nothing was sent to anyone; the draft is unchanged. "
                 "Report this rather than retrying -- retrying will fail the same way.",
                 ", ".join(missing.mapped("email") or missing.mapped("display_name"))))
+
+        # Now that the send is synchronous, SMTP has already been attempted and
+        # its verdict is on the notification rows. Report it instead of letting
+        # the UI claim success over an 'exception' row nobody will look at.
+        notifications = self.env["mail.notification"].sudo().search(
+            [("mail_message_id", "=", message.id), ("notification_type", "=", "email")])
+        failed = notifications.filtered(lambda n: n.notification_status in ("exception", "bounce"))
+        if not failed:
+            return
+        reason = next((n.failure_reason for n in failed if n.failure_reason), "")
+        addresses = ", ".join(failed.res_partner_id.mapped("email")
+                              or failed.res_partner_id.mapped("display_name"))
+        if len(failed) == len(notifications):
+            # Every recipient failed, so nothing reached SMTP: rolling back is
+            # accurate and keeps the draft editable for a retry.
+            raise ValidationError(_(
+                "The mail server refused this message, so it was not sent to anyone "
+                "(%(addresses)s). The draft is unchanged. Server said: %(reason)s",
+                addresses=addresses, reason=reason or _("no reason reported")))
+        # Partial failure: the recipients that did go out cannot be unsent, so
+        # rolling back here would hide a message that is already in flight.
+        # Keep the send and make the failure loud in the log instead.
+        _logger.error(
+            "woow_mail_workspace: draft %s delivered to %s of %s recipients; "
+            "failed for %s (%s)", self.id, len(notifications) - len(failed),
+            len(notifications), addresses, reason or "no reason reported")
