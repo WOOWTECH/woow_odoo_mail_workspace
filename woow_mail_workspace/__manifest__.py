@@ -1,7 +1,7 @@
 {
     "name": "WooW Mail Workspace",
     "summary": "A clean, personal workspace for existing Odoo business email",
-    "version": "18.0.1.0.1",
+    "version": "18.0.1.0.2",
     "category": "Productivity/Discuss",
     "author": "WooW Tech",
     "license": "LGPL-3",

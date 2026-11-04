@@ -86,6 +86,8 @@ class MailDraft(models.Model):
 
     def _validate_source(self):
         for draft in self:
+            if draft.mode == "new" and draft.source_message_id:
+                raise AccessError(_("A new draft cannot reference an original message."))
             if draft.mode != "new":
                 if not draft.source_message_id:
                     raise ValidationError(_("The original message is required."))

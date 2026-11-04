@@ -64,6 +64,27 @@ class TestWorkspace(TransactionCase):
             "partner_ids": [Command.set(self.external.ids)], **values,
         })
 
+    def test_new_draft_cannot_reference_unreadable_source_message(self):
+        """create() must not accept a source message the user cannot read."""
+        with self.assertRaises(AccessError):
+            self.env["woow.mail.draft"].with_user(self.alice).create({"mode": "new", "source_message_id": self.secret.id})
+        with self.assertRaises(AccessError):
+            self.env["woow.mail.draft"].with_user(self.alice).create({"source_message_id": self.secret.id})
+
+    def test_new_draft_cannot_carry_any_source_message(self):
+        """A plain new draft has no source; even a readable message is refused."""
+        with self.assertRaises(AccessError):
+            self.env["woow.mail.draft"].with_user(self.alice).create({"mode": "new", "source_message_id": self.incoming.id})
+
+    def test_compose_new_and_forward_still_work(self):
+        action = self.service.compose(mode="new")
+        draft = self.env["woow.mail.draft"].with_user(self.alice).browse(action["res_id"])
+        self.assertFalse(draft.source_message_id)
+        action = self.service.compose(self.incoming.id, "forward")
+        draft = self.env["woow.mail.draft"].with_user(self.alice).browse(action["res_id"])
+        self.assertEqual(draft.source_message_id, self.incoming)
+        self.assertEqual(draft.mode, "forward")
+
     def test_personal_accessible_database_are_separate(self):
         self.assertEqual(self._ids(), {self.incoming.id, self.sent.id})
         self.assertIn(self.business.id, self._ids(scope="accessible"))
