@@ -33,6 +33,8 @@
     .wm-sidebar-footer strong { font-size: 12px; display: block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
     .wm-sidebar-footer small { color: $o-gray-600; }
     .wm-avatar { display: inline-flex; flex: 0 0 32px; height: 32px; align-items: center; justify-content: center; border-radius: $o-border-radius; background: var(--wm-tint); color: var(--wm-accent); font-weight: 600; }
+    .wm-failure-view { flex: 1; min-height: 0; overflow: auto; }
+    .wm-failure-view > .o_view_controller { height: 100%; }
     .wm-main { min-width: 0; flex: 1; display: flex; flex-direction: column; }
     .wm-topbar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; flex-shrink: 0; }
     .wm-search { flex: 1; max-width: 720px; min-width: 0; }

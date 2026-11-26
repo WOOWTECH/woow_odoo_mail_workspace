@@ -17,3 +17,6 @@ acceptance/
 *.p12
 *.pfx
 .DS_Store
+
+# Deployment-owned trust material must not be published
+mail-ca.crt

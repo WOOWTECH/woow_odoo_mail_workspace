@@ -1,0 +1,54 @@
+<odoo>
+    <record id="mail_settings_action" model="ir.actions.act_window">
+        <field name="name">郵件設定</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+        <field name="context">{'module': 'woow_mail_workspace'}</field>
+    </record>
+    <record id="mail_settings_view" model="ir.ui.view">
+        <field name="name">res.config.settings.woow.mail</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base_setup.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app string="郵件" name="woow_mail_workspace" groups="base.group_system">
+                    <block title="郵件服務連接" name="woow_mail_connection">
+                        <setting string="寄信（SMTP）" help="沿用 Odoo 原生寄信伺服器；mailcow 使用獨立 submit 帳號。">
+                            <div class="content-group">
+                                <p>填入可連線的 mailcow 主機名稱，連接埠 587，加密選擇 STARTTLS。設定寄件網域篩選，避免使用其他租戶的寄件身分。</p>
+                                <button type="action" name="%(base.action_ir_mail_server_list)d" string="管理寄信伺服器" class="btn-link" icon="oi-arrow-right"/>
+                            </div>
+                        </setting>
+                        <setting string="收信（IMAP）" help="沿用 Odoo 原生收信伺服器；mailcow 使用獨立 ingest 帳號。">
+                            <div class="content-group">
+                                <p>伺服器類型選 IMAP，連接埠 993，啟用 SSL/TLS。填入收信帳號，設定收件後建立的業務紀錄；先測試連線，再啟用收信。</p>
+                                <button type="action" name="%(mail.action_email_server_tree)d" string="管理收信伺服器" class="btn-link" icon="oi-arrow-right"/>
+                            </div>
+                        </setting>
+                    </block>
+                    <block title="不同部署與安全連線" name="woow_mail_network">
+                        <setting string="主機名稱與網路">
+                            <p>不同叢集或主機請使用 Odoo 可解析、可連線的 mailcow DNS 名稱，並允許 Odoo 到 mailcow 的 TCP 587／993。叢集內的 .svc.cluster.local 名稱不能直接跨叢集使用。</p>
+                            <p>跨站可用受控 VPN／私有網路；郵件連線不是 HTTP，不能只設定網站反向代理。此頁不會自動修改 DNS、防火牆或 mailcow。</p>
+                        </setting>
+                        <setting string="TLS 憑證信任">
+                            <p>憑證必須包含填入的主機名稱且未過期。使用私有 CA 時，請由部署管理員將 CA 加入 Odoo 信任鏈；本套件的 mail_fetchmail_durable/mail-ca.crt 支援額外 CA，不能關閉憑證驗證代替設定。</p>
+                            <p>帳號與密碼僅在原生伺服器表單設定，不存放於這個說明頁。管理範圍為目前資料庫。</p>
+                        </setting>
+                    </block>
+                    <block title="收信路由與異常處理" name="woow_mail_operations">
+                        <setting string="收件位址與業務路由">
+                            <field name="alias_domain_id" options="{'no_create_edit': True}"/>
+                            <p>別名網域需配合實際收件路由；單改這個欄位不會建立 mailcow 信箱、DNS 或上游轉送規則。此設定不是每位使用者的個人信箱綁定。</p>
+                        </setting>
+                        <setting string="收信異常與郵件工作區">
+                            <p>回到郵件側欄的「收信異常」，查看錯誤、原始信件與人工處理。待處理紀錄不會因開啟此頁而自動重試。</p>
+                            <button type="action" name="%(woow_mail_workspace.workspace_action)d" string="開啟郵件工作區" class="btn-link" icon="oi-arrow-right"/>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+</odoo>
