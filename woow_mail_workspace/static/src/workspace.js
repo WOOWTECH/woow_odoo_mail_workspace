@@ -2,11 +2,13 @@
 import { Component, onWillStart, onWillUnmount, useState } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
+import { View } from "@web/views/view";
 import { FormViewDialog } from "@web/views/view_dialogs/form_view_dialog";
 
 export class MailWorkspace extends Component {
     static template = "woow_mail_workspace.Workspace";
     static props = ["*"];
+    static components = { View };
 
     setup() {
         this.orm = useService("orm");
@@ -17,7 +19,7 @@ export class MailWorkspace extends Component {
             scope: "personal", box: "inbox", search: "", unread: false, folderId: false,
             messages: [], selected: [], detail: null, offset: 0, more: false,
             loading: false, opening: false, failed: false, sidebar: false,
-            admin: false, folders: [], draftCount: 0, name: "", busy: false,
+            management: null, managementVersion: 0, admin: false, folders: [], draftCount: 0, name: "", busy: false,
         });
         this.listVersion = 0;
         this.detailVersion = 0;
@@ -50,6 +52,7 @@ export class MailWorkspace extends Component {
             draftCount: data.draft_count, name: data.name });
     }
     async load() {
+        if (this.state.box === "failures") return;
         const version = ++this.listVersion;
         this.state.loading = true;
         this.state.failed = false;
@@ -91,12 +94,39 @@ export class MailWorkspace extends Component {
         return this.state.messages.length > 0 && this.state.messages.every(m => this.state.selected.includes(m.id));
     }
     clearDetail() { this.detailVersion++; this.state.detail = null; this.state.opening = false; }
+    async openFailures() {
+        if (!this.state.admin) return;
+        try {
+            const views = await this.rpc("management_views");
+            if (!this.alive) return;
+            this.listVersion++;
+            this.clearDetail();
+            Object.assign(this.state, { box: "failures", sidebar: false, selected: [],
+                loading: false, management: views });
+        } catch (error) { this.fail(error); }
+    }
+    get failureViewProps() {
+        return { type: "list", resModel: "mail.fetch.failure",
+            viewId: this.state.management.list, searchViewId: this.state.management.search,
+            context: { search_default_needs_attention: 1, create: false, delete: false },
+            display: { controlPanel: true }, showButtons: false,
+            selectRecord: (id) => this.openFailure(id) };
+    }
+    openFailure(id) {
+        this.dialog.add(FormViewDialog, { resModel: "mail.fetch.failure", resId: id,
+            viewId: this.state.management.form, title: "收信異常", preventCreate: true },
+            { onClose: () => { if (this.alive) this.state.managementVersion++; } });
+    }
+    openMailSettings() {
+        return this.action.doAction("woow_mail_workspace.mail_settings_action");
+    }
     async navigate(box, folderId = false) {
         this.state.box = box; this.state.folderId = folderId; this.state.offset = 0;
         this.state.sidebar = false; this.state.selected = []; this.clearDetail();
         await this.load();
     }
     async changeScope(event) {
+        if (this.state.box === "failures") this.state.box = "inbox";
         this.state.scope = event.target.value; this.state.offset = 0;
         this.state.selected = []; this.clearDetail(); await this.load();
     }

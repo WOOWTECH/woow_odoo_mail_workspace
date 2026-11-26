@@ -71,6 +71,16 @@ class MailWorkspace(models.AbstractModel):
             raise AccessError(_("Database mail requires Odoo administrator access."))
 
     @api.model
+    def management_views(self):
+        """Native embedded views, admin-only; no mailbox credentials in this RPC."""
+        self._guard("database")
+        return {
+            "list": self.env.ref("woow_mail_workspace.failure_list").id,
+            "search": self.env.ref("woow_mail_workspace.failure_search").id,
+            "form": self.env.ref("woow_mail_workspace.failure_form").id,
+        }
+
+    @api.model
     def _source(self, scope):
         self._guard(scope)
         source = self.env["mail.message"]

@@ -7,6 +7,13 @@ OWL client action、QWeb、Odoo 圖示、原生 HTML 編輯器、收件者及附
 預設全寬清單，點信後展開右側閱讀區，手機使用單欄。郵件清單仍為自訂 OWL
 元件，保留原有權限與隔離的閱讀方式；撰寫與資料夾管理沿用原生 Odoo 表單。
 
+## 統一郵件管理（18.0.1.1.0）
+
+管理員可在同一頁側欄查看「收信異常」，沿用原生清單、搜尋與處理表單。
+「郵件設定」也出現在 Odoo 設定頁，連到原生 SMTP/IMAP 伺服器設定與連線測試。
+底層保留 `mail_fetchmail_durable` 相依模組與所有歷史紀錄；不卸載或遷移帳本。
+詳見 [連線架構、跨部署設定與更新步驟](CONNECTIONS.md)。
+
 ## 功能及權限
 
 | 入口 | 可見範圍 |
@@ -28,8 +35,7 @@ Odoo 資料庫若本來跨公司使用，管理入口會涵蓋該資料庫所有
   沒有回覆權限時仍可轉寄自己能讀的信。管理入口的讀取權不會變成原紀錄寫入權。
 - 新信／轉寄建立僅寄件者與初始收件者可存取的 `woow.mail.conversation`；收件同仁可在同一對話回覆。
   對話成員不可任意改寫，亦受公司範圍限制。轉寄複製附件，不移動原附件。
-- 送出只交給 Odoo 原生 composer／佇列，沒有新 SMTP 設定、直接寄信或背景同步排程。
-  使用者通知方式仍依 Odoo 設定；Odoo 內部通知不必然產生 SMTP 信件。
+- 送出沿用原生 composer 與 SMTP 伺服器，立即嘗試寄信。工作區送信不會因收件者偏好站內通知而漏寄；其他 Odoo 通知仍遵循原設定。
   同一草稿用資料庫列鎖防止重複按送出，寄件紀錄不代表外部收件者已收到。
 
 ## 安全邊界
@@ -59,7 +65,7 @@ Odoo 資料庫若本來跨公司使用，管理入口會涵蓋該資料庫所有
 
 ## 安裝與回滾邊界
 
-適用 Odoo 18，依賴 `mail`、`web`。放進既有 addons path、更新 App 清單後安裝
+適用 Odoo 18，依賴 `mail`、`web`、`mail_fetchmail_durable`。放進既有 addons path、更新 App 清單後安裝
 `woow_mail_workspace`；只會新增本模組的 models/views/menu/assets，不更改租戶 mail server、
 fetchmail、bridge、CronJob 或 NetworkPolicy。實際生產安裝須另外決定及執行備份／資源檢查。
 
@@ -76,7 +82,7 @@ odoo -d <isolated_db> -i woow_mail_workspace --test-enable \
   --test-tags /woow_mail_workspace --stop-after-init --no-http --max-cron-threads=0
 ```
 
-測試資料使用 `.invalid` email，實際送出流程的測試將 `ir.mail_server.send_email` 設成一呼叫就失敗。
+測試資料使用 `.invalid` email，實際 SMTP 呼叫由 mock 取代，以模擬成功與失敗，不對外寄信。
 分頁測試亦使用相同資料跑「先 limit 再驗權限」的舊路徑，確認回傳不足 40 封，避免空轉。
 本機瀏覽器驗證腳本、原始日誌與示意資料截圖在 `acceptance/mail-workspace-20261012/`。
 該腳本會修改指定的合成資料，**不是唯讀檢查，禁止指向生產**。

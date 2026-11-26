@@ -11,11 +11,20 @@ Odoo 18 原生後台郵件工作區。將已存在 Odoo 中的業務郵件集中
 **這是 Odoo 既有郵件的操作介面，尚未提供完整個人 IMAP/Gmail 信箱綁定或雙向同步。**
 寄件紀錄不等於收件者已收到；實際寄送時間取決於 Odoo 的郵件排程。
 
+## 郵件管理與連線設定
+
+同一郵件頁新增管理員「收信異常」，原 Incoming Mail Failures 獨立入口隱藏，歷史帳本與原始附件保留。
+「設定 → 郵件」提供原生 SMTP／IMAP 表單入口、連線測試與跨部署 TLS 指引。
+底層收信引擎仍為相依模組，使用者只看到一個應用。
+
+詳見 [連線架構與 GUI 設定步驟](woow_mail_workspace/CONNECTIONS.md)。
+此依賴為 IMAP 收信引擎，拒絕 POP3；既有 POP3 部署需先規劃改用 IMAP。
+
 ## 安裝
 
-適用 Odoo **18**，模組版本 **18.0.1.0.1**，依賴 `mail`、`web`。
+適用 Odoo **18**，模組版本 **18.0.1.1.0**，依賴 `mail`、`web`、`mail_fetchmail_durable`（本 repo 已包含）。
 
-1. 將本 repo 放到主機，將 repo 根目錄加入 Odoo `addons_path`；或將 `woow_mail_workspace/` 複製到既有 addons 目錄。
+1. 將本 repo 放到主機，將 repo 根目錄加入 Odoo `addons_path`；或將 `woow_mail_workspace/` 與 `mail_fetchmail_durable/` 一起複製到既有 addons 目錄。
 2. 更新應用程式清單，安裝 **WooW Mail Workspace**。
 3. 從 Odoo 應用程式選單開啟「郵件」。
 

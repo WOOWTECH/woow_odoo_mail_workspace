@@ -1,0 +1,61 @@
+<odoo>
+    <!-- Keep original model / XML IDs / raw evidence. Do not uninstall the engine. -->
+    <record id="mail_fetchmail_durable.menu_mail_fetch_failure" model="ir.ui.menu">
+        <field name="active" eval="False"/>
+    </record>
+    <record id="failure_list" model="ir.ui.view">
+        <field name="name">woow.mail.failure.list</field>
+        <field name="model">mail.fetch.failure</field>
+        <field name="arch" type="xml">
+            <list string="收信異常" create="false" edit="false" delete="false" decoration-danger="status == 'failed'" decoration-warning="status == 'uncertain'">
+                <field name="last_attempt" string="最後處理時間"/>
+                <field name="server_id" string="收信伺服器"/>
+                <field name="message_id_header" string="郵件識別碼"/>
+                <field name="status" string="狀態" widget="badge"/>
+                <field name="attempts" string="處理次數"/>
+                <field name="last_error" string="錯誤原因" optional="hide"/>
+                <field name="protocol" optional="hide"/>
+                <field name="remote_uid" optional="hide"/>
+                <field name="raw_size" string="原信大小" optional="hide"/>
+            </list>
+        </field>
+    </record>
+    <record id="failure_search" model="ir.ui.view">
+        <field name="name">woow.mail.failure.search</field>
+        <field name="model">mail.fetch.failure</field>
+        <field name="arch" type="xml">
+            <search string="收信異常">
+                <field name="message_id_header" string="郵件識別碼"/>
+                <field name="server_id" string="收信伺服器"/>
+                <field name="last_error" string="錯誤原因"/>
+                <filter name="needs_attention" string="待處理" domain="[('status', 'in', ['failed', 'uncertain'])]"/>
+                <separator/>
+                <filter name="failed" string="失敗" domain="[('status', '=', 'failed')]"/>
+                <filter name="uncertain" string="結果不確定" domain="[('status', '=', 'uncertain')]"/>
+                <filter name="succeeded" string="成功" domain="[('status', '=', 'succeeded')]"/>
+                <filter name="skipped" string="已略過" domain="[('status', '=', 'skipped')]"/>
+                <group string="分組">
+                    <filter name="by_server" string="收信伺服器" context="{'group_by': 'server_id'}"/>
+                    <filter name="by_status" string="狀態" context="{'group_by': 'status'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+    <record id="failure_form" model="ir.ui.view">
+        <field name="name">woow.mail.failure.form</field>
+        <field name="model">mail.fetch.failure</field>
+        <field name="inherit_id" ref="mail_fetchmail_durable.view_mail_fetch_failure_form"/>
+        <field name="mode">primary</field>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="attributes"><attribute name="string">收信異常</attribute><attribute name="delete">false</attribute></xpath>
+            <xpath expr="//button[@name='action_retry_failed']" position="attributes">
+                <attribute name="string">重新處理收信</attribute>
+                <attribute name="confirm">這會重新匯入原始信件，可能建立業務紀錄與通知。確認已排除失敗原因並核對沒有重複資料？</attribute>
+            </xpath>
+            <xpath expr="//button[@name='action_mark_skipped']" position="attributes">
+                <attribute name="string">標記略過</attribute>
+                <attribute name="confirm">略過後不會自動重新處理；原始信件與紀錄仍保留。確定略過？</attribute>
+            </xpath>
+        </field>
+    </record>
+</odoo>

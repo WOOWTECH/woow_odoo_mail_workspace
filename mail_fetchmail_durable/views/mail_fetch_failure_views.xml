@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_mail_fetch_failure_tree" model="ir.ui.view">
+        <field name="name">mail.fetch.failure.list</field>
+        <field name="model">mail.fetch.failure</field>
+        <field name="arch" type="xml">
+            <list string="Incoming Mail Failures" create="false">
+                <field name="last_attempt"/>
+                <field name="server_id"/>
+                <field name="protocol"/>
+                <field name="uid_validity"/>
+                <field name="remote_uid"/>
+                <field name="message_id_header"/>
+                <field name="status"/>
+                <field name="attempts"/>
+                <field name="raw_size"/>
+                <field name="raw_retention_policy"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_mail_fetch_failure_form" model="ir.ui.view">
+        <field name="name">mail.fetch.failure.form</field>
+        <field name="model">mail.fetch.failure</field>
+        <field name="arch" type="xml">
+            <form string="Incoming Mail Failure" create="false">
+                <header>
+                    <button name="action_retry_failed" type="object" string="Retry failed" class="btn-primary" invisible="status != 'failed'"/>
+                    <button name="action_mark_skipped" type="object" string="Mark skipped" invisible="status not in ('failed', 'uncertain')"/>
+                    <field name="status" widget="statusbar" statusbar_visible="processing,failed,uncertain,succeeded,skipped"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="server_id" readonly="1"/>
+                            <field name="protocol" readonly="1"/>
+                            <field name="mailbox" readonly="1"/>
+                            <field name="uid_validity" readonly="1"/>
+                            <field name="remote_uid" readonly="1"/>
+                            <field name="fingerprint" readonly="1"/>
+                            <field name="raw_size" readonly="1"/>
+                            <field name="raw_retention_policy" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="attempts" readonly="1"/>
+                            <field name="last_attempt" readonly="1"/>
+                            <field name="first_failure" readonly="1"/>
+                            <field name="target_model" readonly="1"/>
+                            <field name="res_model" readonly="1"/>
+                            <field name="res_id" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Error">
+                            <field name="last_error" readonly="1"/>
+                            <field name="last_traceback" readonly="1"/>
+                        </page>
+                        <page string="Raw message">
+                            <field name="raw_attachment_id" readonly="1"/>
+                        </page>
+                        <page string="Notes">
+                            <field name="note"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_mail_fetch_failure" model="ir.actions.act_window">
+        <field name="name">Incoming Mail Failures</field>
+        <field name="res_model">mail.fetch.failure</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_mail_fetch_failure" name="Incoming Mail Failures" action="action_mail_fetch_failure" groups="base.group_system" sequence="80"/>
+</odoo>

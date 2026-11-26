@@ -1,0 +1,2 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_mail_fetch_failure_system,mail.fetch.failure system,model_mail_fetch_failure,base.group_system,1,1,1,0

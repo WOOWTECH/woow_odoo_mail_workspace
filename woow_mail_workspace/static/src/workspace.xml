@@ -24,9 +24,26 @@
                     <button t-foreach="state.folders" t-as="folder" t-key="folder.id" class="wm-nav-item nav-link" t-att-aria-label="folder.name" t-att-class="{active: state.box === 'folder' and state.folderId === folder.id}" t-on-click="() => this.navigate('folder', folder.id)"><i class="fa fa-folder-o"/><span t-esc="folder.name"/></button>
                     <p t-if="!state.folders.length" class="wm-folder-hint">依你的工作方式整理信件</p>
                 </nav>
+                <nav t-if="state.admin" class="wm-management nav flex-column mt-3" aria-label="郵件管理">
+                    <div class="wm-folder-heading">郵件管理</div>
+                    <button class="wm-nav-item nav-link" t-att-class="{active: state.box === 'failures'}" aria-label="收信異常" t-on-click="openFailures"><i class="fa fa-exclamation-triangle"/><span>收信異常</span></button>
+                    <button class="wm-nav-item nav-link" aria-label="郵件設定" t-on-click="openMailSettings"><i class="fa fa-cog"/><span>郵件設定</span></button>
+                </nav>
                 <div class="wm-sidebar-footer"><span class="wm-avatar" t-esc="initials(state.name)"/><div><strong t-esc="state.name"/><small>Odoo 郵件工作區</small></div></div>
             </aside>
             <main class="wm-main">
+                <t t-if="state.box === 'failures' and state.admin and state.management">
+                    <header class="wm-topbar o_control_panel">
+                        <button class="btn btn-light wm-icon wm-menu-toggle" aria-label="開啟信箱導覽" t-on-click="() => state.sidebar = !state.sidebar"><i class="fa fa-bars"/></button>
+                        <h1 class="h4 mb-0">收信異常</h1>
+                        <button class="btn btn-secondary ms-auto" t-on-click="() => state.managementVersion++" aria-label="重新整理收信異常"><i class="fa fa-refresh"/> 重新整理</button>
+                    </header>
+                    <div class="alert alert-secondary m-3 mb-0">管理員可查看本資料庫的收信處理紀錄。預設列出失敗與結果不確定的紀錄；結果不確定時，請先核對業務資料。</div>
+                    <section class="wm-failure-view" aria-label="收信異常清單">
+                        <View t-key="state.managementVersion" t-props="failureViewProps"/>
+                    </section>
+                </t>
+                <t t-else="">
                 <header class="wm-topbar o_control_panel">
                     <button class="btn btn-light wm-icon wm-menu-toggle" aria-label="開啟信箱導覽" t-on-click="() => state.sidebar = !state.sidebar"><i class="fa fa-bars"/></button>
                     <form class="wm-search input-group" t-on-submit="search" role="search"><span class="input-group-text"><i class="fa fa-search"/></span><input class="form-control" t-model="state.search" aria-label="搜尋郵件" placeholder="搜尋主旨、寄件者、收件者或內文"/><button type="submit" class="wm-search-go btn btn-secondary" title="搜尋" aria-label="搜尋"><i class="fa fa-arrow-right"/></button></form>
@@ -95,6 +112,7 @@
                     </div>
                     <footer class="wm-footnote" t-if="state.box === 'trash'">垃圾桶只隱藏你自己的檢視；原信與業務紀錄仍完整保留。</footer>
                 </section>
+                </t>
             </main>
         </div>
     </t>
